@@ -47,5 +47,10 @@
     "Transparency set to 0% - Face swapping disabled.": "Transparência definida para 0% - Troca de rosto desativada.",
     "Transparency set to 100%.": "Transparência definida para 100%.",
     "Transparency set to {percentage}%": "Transparência definida para {percentage}%",
-    "Sharpness:": "Nitidez:"
+    "Sharpness:": "Nitidez:",
+    "Process folder": "Processar pasta",
+    "select a folder with images or videos": "Selecione uma pasta com imagens ou vídeos",
+    "select output directory": "Selecione a pasta de saída",
+    "Found {count} files to process": "Encontrados {count} arquivos para processar",
+    "No valid image or video files found in folder": "Nenhum arquivo de imagem ou vídeo válido encontrado na pasta"
 }

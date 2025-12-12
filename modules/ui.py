@@ -106,6 +106,9 @@ def save_switch_states():
         "show_fps": modules.globals.show_fps,
         "mouth_mask": modules.globals.mouth_mask,
         "show_mouth_mask_box": modules.globals.show_mouth_mask_box,
+        "process_folder": modules.globals.process_folder,
+        "vps_enabled": modules.globals.vps_enabled,
+        "vps_server_url": modules.globals.vps_server_url,
     }
     with open("switch_states.json", "w") as f:
         json.dump(switch_states, f)
@@ -130,6 +133,9 @@ def load_switch_states():
         modules.globals.show_mouth_mask_box = switch_states.get(
             "show_mouth_mask_box", False
         )
+        modules.globals.process_folder = switch_states.get("process_folder", False)
+        modules.globals.vps_enabled = switch_states.get("vps_enabled", False)
+        modules.globals.vps_server_url = switch_states.get("vps_server_url", None)
     except FileNotFoundError:
         # If the file doesn't exist, use default values
         pass
@@ -152,24 +158,36 @@ def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.C
     root.configure()
     root.protocol("WM_DELETE_WINDOW", lambda: destroy())
 
-    source_label = ctk.CTkLabel(root, text=None)
+    # Criar TabView para abas
+    tabview = ctk.CTkTabview(root, width=ROOT_WIDTH-20, height=ROOT_HEIGHT-100)
+    tabview.place(relx=0.02, rely=0.02, relwidth=0.96, relheight=0.85)
+    
+    # Aba 1: Processamento Principal
+    tab_processamento = tabview.add(_("Processamento"))
+    
+    # Aba 2: Configurações e VPS
+    tab_config = tabview.add(_("Configurações"))
+
+    # ========== ABA 1: PROCESSAMENTO ==========
+    source_label = ctk.CTkLabel(tab_processamento, text=None)
     source_label.place(relx=0.1, rely=0.05, relwidth=0.275, relheight=0.225)
 
-    target_label = ctk.CTkLabel(root, text=None)
+    target_label = ctk.CTkLabel(tab_processamento, text=None)
     target_label.place(relx=0.6, rely=0.05, relwidth=0.275, relheight=0.225)
 
     select_face_button = ctk.CTkButton(
-        root, text=_("Select a face"), cursor="hand2", command=lambda: select_source_path()
+        tab_processamento, text=_("Select a face"), cursor="hand2", command=lambda: select_source_path()
     )
     select_face_button.place(relx=0.1, rely=0.30, relwidth=0.3, relheight=0.1)
 
     swap_faces_button = ctk.CTkButton(
-        root, text="↔", cursor="hand2", command=lambda: swap_faces_paths()
+        tab_processamento, text="↔", cursor="hand2", command=lambda: swap_faces_paths()
     )
     swap_faces_button.place(relx=0.45, rely=0.30, relwidth=0.1, relheight=0.1)
 
+
     select_target_button = ctk.CTkButton(
-        root,
+        tab_processamento,
         text=_("Select a target"),
         cursor="hand2",
         command=lambda: select_target_path(),
@@ -178,7 +196,7 @@ def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.C
 
     keep_fps_value = ctk.BooleanVar(value=modules.globals.keep_fps)
     keep_fps_checkbox = ctk.CTkSwitch(
-        root,
+        tab_processamento,
         text=_("Keep fps"),
         variable=keep_fps_value,
         cursor="hand2",
@@ -187,37 +205,11 @@ def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.C
             save_switch_states(),
         ),
     )
-    keep_fps_checkbox.place(relx=0.1, rely=0.5)
-
-    keep_frames_value = ctk.BooleanVar(value=modules.globals.keep_frames)
-    keep_frames_switch = ctk.CTkSwitch(
-        root,
-        text=_("Keep frames"),
-        variable=keep_frames_value,
-        cursor="hand2",
-        command=lambda: (
-            setattr(modules.globals, "keep_frames", keep_frames_value.get()),
-            save_switch_states(),
-        ),
-    )
-    keep_frames_switch.place(relx=0.1, rely=0.55)
-
-    enhancer_value = ctk.BooleanVar(value=modules.globals.fp_ui["face_enhancer"])
-    enhancer_switch = ctk.CTkSwitch(
-        root,
-        text=_("Face Enhancer"),
-        variable=enhancer_value,
-        cursor="hand2",
-        command=lambda: (
-            update_tumbler("face_enhancer", enhancer_value.get()),
-            save_switch_states(),
-        ),
-    )
-    enhancer_switch.place(relx=0.1, rely=0.6)
+    keep_fps_checkbox.place(relx=0.1, rely=0.45)
 
     keep_audio_value = ctk.BooleanVar(value=modules.globals.keep_audio)
     keep_audio_switch = ctk.CTkSwitch(
-        root,
+        tab_processamento,
         text=_("Keep audio"),
         variable=keep_audio_value,
         cursor="hand2",
@@ -226,11 +218,11 @@ def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.C
             save_switch_states(),
         ),
     )
-    keep_audio_switch.place(relx=0.6, rely=0.5)
+    keep_audio_switch.place(relx=0.6, rely=0.45)
 
     many_faces_value = ctk.BooleanVar(value=modules.globals.many_faces)
     many_faces_switch = ctk.CTkSwitch(
-        root,
+        tab_processamento,
         text=_("Many faces"),
         variable=many_faces_value,
         cursor="hand2",
@@ -239,11 +231,11 @@ def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.C
             save_switch_states(),
         ),
     )
-    many_faces_switch.place(relx=0.6, rely=0.55)
+    many_faces_switch.place(relx=0.1, rely=0.5)
 
     color_correction_value = ctk.BooleanVar(value=modules.globals.color_correction)
     color_correction_switch = ctk.CTkSwitch(
-        root,
+        tab_processamento,
         text=_("Fix Blueish Cam"),
         variable=color_correction_value,
         cursor="hand2",
@@ -252,15 +244,24 @@ def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.C
             save_switch_states(),
         ),
     )
-    color_correction_switch.place(relx=0.6, rely=0.6)
+    color_correction_switch.place(relx=0.6, rely=0.5)
 
-    #    nsfw_value = ctk.BooleanVar(value=modules.globals.nsfw_filter)
-    #    nsfw_switch = ctk.CTkSwitch(root, text='NSFW filter', variable=nsfw_value, cursor='hand2', command=lambda: setattr(modules.globals, 'nsfw_filter', nsfw_value.get()))
-    #    nsfw_switch.place(relx=0.6, rely=0.7)
+    enhancer_value = ctk.BooleanVar(value=modules.globals.fp_ui["face_enhancer"])
+    enhancer_switch = ctk.CTkSwitch(
+        tab_processamento,
+        text=_("Face Enhancer"),
+        variable=enhancer_value,
+        cursor="hand2",
+        command=lambda: (
+            update_tumbler("face_enhancer", enhancer_value.get()),
+            save_switch_states(),
+        ),
+    )
+    enhancer_switch.place(relx=0.1, rely=0.55)
 
     map_faces = ctk.BooleanVar(value=modules.globals.map_faces)
     map_faces_switch = ctk.CTkSwitch(
-        root,
+        tab_processamento,
         text=_("Map faces"),
         variable=map_faces,
         cursor="hand2",
@@ -270,34 +271,21 @@ def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.C
             close_mapper_window() if not map_faces.get() else None
         ),
     )
-    map_faces_switch.place(relx=0.1, rely=0.65)
-
-    show_fps_value = ctk.BooleanVar(value=modules.globals.show_fps)
-    show_fps_switch = ctk.CTkSwitch(
-        root,
-        text=_("Show FPS"),
-        variable=show_fps_value,
-        cursor="hand2",
-        command=lambda: (
-            setattr(modules.globals, "show_fps", show_fps_value.get()),
-            save_switch_states(),
-        ),
-    )
-    show_fps_switch.place(relx=0.6, rely=0.65)
+    map_faces_switch.place(relx=0.6, rely=0.55)
 
     mouth_mask_var = ctk.BooleanVar(value=modules.globals.mouth_mask)
     mouth_mask_switch = ctk.CTkSwitch(
-        root,
+        tab_processamento,
         text=_("Mouth Mask"),
         variable=mouth_mask_var,
         cursor="hand2",
         command=lambda: setattr(modules.globals, "mouth_mask", mouth_mask_var.get()),
     )
-    mouth_mask_switch.place(relx=0.1, rely=0.45)
+    mouth_mask_switch.place(relx=0.1, rely=0.6)
 
     show_mouth_mask_box_var = ctk.BooleanVar(value=modules.globals.show_mouth_mask_box)
     show_mouth_mask_box_switch = ctk.CTkSwitch(
-        root,
+        tab_processamento,
         text=_("Show Mouth Mask Box"),
         variable=show_mouth_mask_box_var,
         cursor="hand2",
@@ -305,26 +293,198 @@ def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.C
             modules.globals, "show_mouth_mask_box", show_mouth_mask_box_var.get()
         ),
     )
-    show_mouth_mask_box_switch.place(relx=0.6, rely=0.45)
+    show_mouth_mask_box_switch.place(relx=0.6, rely=0.6)
 
-    start_button = ctk.CTkButton(
-        root, text=_("Start"), cursor="hand2", command=lambda: analyze_target(start, root)
+    # Sliders na aba principal
+    transparency_var = ctk.DoubleVar(value=1.0)
+
+    def on_transparency_change(value: float):
+        val = float(value)
+        modules.globals.opacity = val
+        percentage = int(val * 100)
+        if percentage == 0:
+            modules.globals.fp_ui["face_enhancer"] = False
+            update_status(_("Transparency set to 0% - Face swapping disabled."))
+        elif percentage == 100:
+            modules.globals.face_swapper_enabled = True
+            update_status(_("Transparency set to 100%."))
+        else:
+            modules.globals.face_swapper_enabled = True
+            update_status(_("Transparency set to {percentage}%").format(percentage=percentage))
+
+    transparency_label = ctk.CTkLabel(tab_processamento, text=_("Transparency:"))
+    transparency_label.place(relx=0.1, rely=0.65, relwidth=0.2, relheight=0.04)
+
+    transparency_slider = ctk.CTkSlider(
+        tab_processamento,
+        from_=0.0,
+        to=1.0,
+        variable=transparency_var,
+        command=on_transparency_change,
+        fg_color="#E0E0E0",
+        progress_color="#007BFF",
+        button_color="#FFFFFF",
+        button_hover_color="#CCCCCC",
+        height=5,
+        border_width=1,
+        corner_radius=3,
     )
-    start_button.place(relx=0.15, rely=0.80, relwidth=0.2, relheight=0.05)
+    transparency_slider.place(relx=0.3, rely=0.67, relwidth=0.6, relheight=0.02)
+
+    sharpness_var = ctk.DoubleVar(value=0.0)
+    def on_sharpness_change(value: float):
+        modules.globals.sharpness = float(value)
+        update_status(f"Sharpness set to {value:.1f}")
+
+    sharpness_label = ctk.CTkLabel(tab_processamento, text=_("Sharpness:"))
+    sharpness_label.place(relx=0.1, rely=0.7, relwidth=0.2, relheight=0.04)
+
+    sharpness_slider = ctk.CTkSlider(
+        tab_processamento,
+        from_=0.0,
+        to=5.0,
+        variable=sharpness_var,
+        command=on_sharpness_change,
+        fg_color="#E0E0E0",
+        progress_color="#007BFF",
+        button_color="#FFFFFF",
+        button_hover_color="#CCCCCC",
+        height=5,
+        border_width=1,
+        corner_radius=3,
+    )
+    sharpness_slider.place(relx=0.3, rely=0.72, relwidth=0.6, relheight=0.02)
+
+    # Botões principais na aba de processamento
+    start_button = ctk.CTkButton(
+        tab_processamento, text=_("Start"), cursor="hand2", command=lambda: analyze_target(start, root)
+    )
+    start_button.place(relx=0.15, rely=0.78, relwidth=0.2, relheight=0.08)
 
     stop_button = ctk.CTkButton(
-        root, text=_("Destroy"), cursor="hand2", command=lambda: destroy()
+        tab_processamento, text=_("Destroy"), cursor="hand2", command=lambda: destroy()
     )
-    stop_button.place(relx=0.4, rely=0.80, relwidth=0.2, relheight=0.05)
+    stop_button.place(relx=0.4, rely=0.78, relwidth=0.2, relheight=0.08)
 
     preview_button = ctk.CTkButton(
-        root, text=_("Preview"), cursor="hand2", command=lambda: toggle_preview()
+        tab_processamento, text=_("Preview"), cursor="hand2", command=lambda: toggle_preview()
     )
-    preview_button.place(relx=0.65, rely=0.80, relwidth=0.2, relheight=0.05)
+    preview_button.place(relx=0.65, rely=0.78, relwidth=0.2, relheight=0.08)
 
-    # --- Camera Selection ---
-    camera_label = ctk.CTkLabel(root, text=_("Select Camera:"))
-    camera_label.place(relx=0.1, rely=0.86, relwidth=0.2, relheight=0.05)
+    # ========== ABA 2: CONFIGURAÇÕES ==========
+    
+    # Processar pasta
+    process_folder_value = ctk.BooleanVar(value=modules.globals.process_folder)
+    process_folder_switch = ctk.CTkSwitch(
+        tab_config,
+        text=_("Process folder"),
+        variable=process_folder_value,
+        cursor="hand2",
+        command=lambda: (
+            setattr(modules.globals, "process_folder", process_folder_value.get()),
+            save_switch_states(),
+        ),
+    )
+    process_folder_switch.place(relx=0.1, rely=0.05)
+
+    # VPS Remote Processing
+    vps_label = ctk.CTkLabel(tab_config, text=_("=== GPU Externa (VPS) ==="), font=("Arial", 14, "bold"))
+    vps_label.place(relx=0.1, rely=0.15, relwidth=0.8)
+    
+    vps_enabled_value = ctk.BooleanVar(value=modules.globals.vps_enabled)
+    vps_switch = ctk.CTkSwitch(
+        tab_config,
+        text=_("Habilitar GPU Externa (VPS)"),
+        variable=vps_enabled_value,
+        cursor="hand2",
+        command=lambda: (
+            setattr(modules.globals, "vps_enabled", vps_enabled_value.get()),
+            save_switch_states(),
+        ),
+    )
+    vps_switch.place(relx=0.1, rely=0.22)
+    
+    # VPS Server URL
+    vps_url_label = ctk.CTkLabel(tab_config, text=_("Servidor VPS:"))
+    vps_url_label.place(relx=0.1, rely=0.28, relwidth=0.2, relheight=0.04)
+    
+    vps_url_entry = ctk.CTkEntry(
+        tab_config,
+        placeholder_text="192.168.1.100:8765",
+        width=250
+    )
+    if modules.globals.vps_server_url:
+        vps_url_entry.insert(0, modules.globals.vps_server_url)
+    vps_url_entry.place(relx=0.1, rely=0.33, relwidth=0.4, relheight=0.04)
+    
+    def save_vps_url():
+        url = vps_url_entry.get().strip()
+        if url:
+            modules.globals.vps_server_url = url
+            update_status(f"Servidor VPS salvo: {url}")
+        else:
+            modules.globals.vps_server_url = None
+            update_status("Servidor VPS removido")
+        save_switch_states()
+    
+    # Botão para salvar URL
+    save_vps_button = ctk.CTkButton(
+        tab_config,
+        text=_("Salvar IP"),
+        cursor="hand2",
+        command=save_vps_url,
+        width=80,
+        height=25
+    )
+    save_vps_button.place(relx=0.52, rely=0.33, relwidth=0.15, relheight=0.04)
+    
+    # Botão para testar conexão
+    def test_vps_connection():
+        url = vps_url_entry.get().strip()
+        if not url:
+            update_status("Por favor, informe a URL do servidor VPS")
+            return
+        
+        try:
+            import websockets
+        except ImportError:
+            update_status("❌ Módulo 'websockets' não instalado. Execute: pip install websockets")
+            return
+        
+        try:
+            from modules.vps.client_ws import VPSClient
+            client = VPSClient(url)
+            sucesso, mensagem = client.test_connection_sync()
+            if sucesso:
+                update_status(f"✅ {mensagem}")
+            else:
+                update_status(f"❌ {mensagem}")
+        except ImportError as e:
+            update_status(f"❌ Erro de importação: {str(e)}. Instale: pip install websockets")
+        except Exception as e:
+            update_status(f"❌ Erro ao testar conexão: {str(e)}")
+    
+    test_vps_button = ctk.CTkButton(
+        tab_config,
+        text=_("Testar Conexão"),
+        cursor="hand2",
+        command=test_vps_connection,
+        width=100,
+        height=25
+    )
+    test_vps_button.place(relx=0.68, rely=0.33, relwidth=0.2, relheight=0.04)
+    
+    vps_info_label = ctk.CTkLabel(
+        tab_config, 
+        text=_("Exemplo: 192.168.1.100:8765 ou IP_PUBLICO:8765"),
+        font=("Arial", 10),
+        text_color="gray"
+    )
+    vps_info_label.place(relx=0.1, rely=0.38, relwidth=0.8)
+
+    # --- Camera Selection (na aba de processamento) ---
+    camera_label = ctk.CTkLabel(tab_processamento, text=_("Select Camera:"))
+    camera_label.place(relx=0.1, rely=0.85, relwidth=0.2, relheight=0.05)
 
     available_cameras = get_available_cameras()
     camera_indices, camera_names = available_cameras
@@ -332,7 +492,7 @@ def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.C
     if not camera_names or camera_names[0] == "No cameras found":
         camera_variable = ctk.StringVar(value="No cameras found")
         camera_optionmenu = ctk.CTkOptionMenu(
-            root,
+            tab_processamento,
             variable=camera_variable,
             values=["No cameras found"],
             state="disabled",
@@ -340,13 +500,13 @@ def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.C
     else:
         camera_variable = ctk.StringVar(value=camera_names[0])
         camera_optionmenu = ctk.CTkOptionMenu(
-            root, variable=camera_variable, values=camera_names
+            tab_processamento, variable=camera_variable, values=camera_names
         )
 
-    camera_optionmenu.place(relx=0.35, rely=0.86, relwidth=0.25, relheight=0.05)
+    camera_optionmenu.place(relx=0.35, rely=0.85, relwidth=0.25, relheight=0.05)
 
     live_button = ctk.CTkButton(
-        root,
+        tab_processamento,
         text=_("Live"),
         cursor="hand2",
         command=lambda: webcam_preview(
@@ -363,82 +523,19 @@ def create_root(start: Callable[[], None], destroy: Callable[[], None]) -> ctk.C
             else "disabled"
         ),
     )
-    live_button.place(relx=0.65, rely=0.86, relwidth=0.2, relheight=0.05)
+    live_button.place(relx=0.65, rely=0.85, relwidth=0.2, relheight=0.05)
     # --- End Camera Selection ---
 
-    # 1) Define a DoubleVar for transparency (0 = fully transparent, 1 = fully opaque)
-    transparency_var = ctk.DoubleVar(value=1.0)
 
-    def on_transparency_change(value: float):
-        # Convert slider value to float
-        val = float(value)
-        modules.globals.opacity = val  # Set global opacity
-        percentage = int(val * 100)
-
-        if percentage == 0:
-            modules.globals.fp_ui["face_enhancer"] = False
-            update_status(_("Transparency set to 0% - Face swapping disabled."))
-        elif percentage == 100:
-            modules.globals.face_swapper_enabled = True
-            update_status(_("Transparency set to 100%."))
-        else:
-            modules.globals.face_swapper_enabled = True
-            update_status(_("Transparency set to {percentage}%").format(percentage=percentage))
-
-    # 2) Transparency label and slider (placed ABOVE sharpness)
-    transparency_label = ctk.CTkLabel(root, text=_("Transparency:"))
-    transparency_label.place(relx=0.15, rely=0.69, relwidth=0.2, relheight=0.05)
-
-    transparency_slider = ctk.CTkSlider(
-        root,
-        from_=0.0,
-        to=1.0,
-        variable=transparency_var,
-        command=on_transparency_change,
-        fg_color="#E0E0E0",
-        progress_color="#007BFF",
-        button_color="#FFFFFF",
-        button_hover_color="#CCCCCC",
-        height=5,
-        border_width=1,
-        corner_radius=3,
-    )
-    transparency_slider.place(relx=0.35, rely=0.71, relwidth=0.5, relheight=0.02)
-
-    # 3) Sharpness label & slider
-    sharpness_var = ctk.DoubleVar(value=0.0)  # start at 0.0
-    def on_sharpness_change(value: float):
-        modules.globals.sharpness = float(value)
-        update_status(f"Sharpness set to {value:.1f}")
-
-    sharpness_label = ctk.CTkLabel(root, text=_("Sharpness:"))
-    sharpness_label.place(relx=0.15, rely=0.74, relwidth=0.2, relheight=0.05)
-
-    sharpness_slider = ctk.CTkSlider(
-        root,
-        from_=0.0,
-        to=5.0,
-        variable=sharpness_var,
-        command=on_sharpness_change,
-        fg_color="#E0E0E0",
-        progress_color="#007BFF",
-        button_color="#FFFFFF",
-        button_hover_color="#CCCCCC",
-        height=5,
-        border_width=1,
-        corner_radius=3,
-    )
-    sharpness_slider.place(relx=0.35, rely=0.76, relwidth=0.5, relheight=0.02)
-
-    # Status and link at the bottom
+    # Status and link at the bottom (fora das abas)
     global status_label
     status_label = ctk.CTkLabel(root, text=None, justify="center")
-    status_label.place(relx=0.1, rely=0.9, relwidth=0.8)
+    status_label.place(relx=0.1, rely=0.88, relwidth=0.8)
 
     donate_label = ctk.CTkLabel(
         root, text="Deep Live Cam", justify="center", cursor="hand2"
     )
-    donate_label.place(relx=0.1, rely=0.95, relwidth=0.8)
+    donate_label.place(relx=0.1, rely=0.93, relwidth=0.8)
     donate_label.configure(
         text_color=ctk.ThemeManager.theme.get("URL").get("text_color")
     )
@@ -462,6 +559,16 @@ def close_mapper_window():
 def analyze_target(start: Callable[[], None], root: ctk.CTk):
     if POPUP != None and POPUP.winfo_exists():
         update_status("Please complete pop-up or close it.")
+        return
+
+    # Check if processing folder mode
+    if modules.globals.process_folder and modules.globals.file_queue:
+        if not modules.globals.source_path:
+            update_status("Please select a source image first")
+            return
+        # Skip face mapping for folder processing (use default source for all)
+        # Output directory will be selected in start() function
+        start()
         return
 
     if modules.globals.map_faces:
@@ -694,24 +801,70 @@ def select_target_path() -> None:
     global RECENT_DIRECTORY_TARGET, img_ft, vid_ft
 
     PREVIEW.withdraw()
-    target_path = ctk.filedialog.askopenfilename(
-        title=_("select an target image or video"),
-        initialdir=RECENT_DIRECTORY_TARGET,
-        filetypes=[img_ft, vid_ft],
-    )
-    if is_image(target_path):
-        modules.globals.target_path = target_path
-        RECENT_DIRECTORY_TARGET = os.path.dirname(modules.globals.target_path)
-        image = render_image_preview(modules.globals.target_path, (200, 200))
-        target_label.configure(image=image)
-    elif is_video(target_path):
-        modules.globals.target_path = target_path
-        RECENT_DIRECTORY_TARGET = os.path.dirname(modules.globals.target_path)
-        video_frame = render_video_preview(target_path, (200, 200))
-        target_label.configure(image=video_frame)
+    
+    # If process_folder is enabled, allow folder selection
+    if modules.globals.process_folder:
+        folder_path = ctk.filedialog.askdirectory(
+            title=_("select a folder with images or videos"),
+            initialdir=RECENT_DIRECTORY_TARGET,
+        )
+        if folder_path:
+            modules.globals.folder_path = folder_path
+            RECENT_DIRECTORY_TARGET = folder_path
+            # List valid files in folder
+            valid_files = get_valid_files_from_folder(folder_path)
+            if valid_files:
+                modules.globals.file_queue = valid_files
+                update_status(_("Found {count} files to process").format(count=len(valid_files)))
+                # Show preview of first file
+                first_file = valid_files[0]
+                if is_image(first_file):
+                    image = render_image_preview(first_file, (200, 200))
+                    target_label.configure(image=image)
+                elif is_video(first_file):
+                    video_frame = render_video_preview(first_file, (200, 200))
+                    target_label.configure(image=video_frame)
+            else:
+                update_status(_("No valid image or video files found in folder"))
+                modules.globals.folder_path = None
+                modules.globals.file_queue = []
+                target_label.configure(image=None)
+        else:
+            modules.globals.folder_path = None
+            modules.globals.file_queue = []
+            target_label.configure(image=None)
     else:
-        modules.globals.target_path = None
-        target_label.configure(image=None)
+        # Normal file selection
+        target_path = ctk.filedialog.askopenfilename(
+            title=_("select an target image or video"),
+            initialdir=RECENT_DIRECTORY_TARGET,
+            filetypes=[img_ft, vid_ft],
+        )
+        if is_image(target_path):
+            modules.globals.target_path = target_path
+            RECENT_DIRECTORY_TARGET = os.path.dirname(modules.globals.target_path)
+            image = render_image_preview(modules.globals.target_path, (200, 200))
+            target_label.configure(image=image)
+        elif is_video(target_path):
+            modules.globals.target_path = target_path
+            RECENT_DIRECTORY_TARGET = os.path.dirname(modules.globals.target_path)
+            video_frame = render_video_preview(target_path, (200, 200))
+            target_label.configure(image=video_frame)
+        else:
+            modules.globals.target_path = None
+            target_label.configure(image=None)
+
+
+def select_output_directory() -> str | None:
+    """Select output directory for folder processing mode."""
+    global RECENT_DIRECTORY_OUTPUT
+    output_dir = ctk.filedialog.askdirectory(
+        title=_("select output directory"),
+        initialdir=RECENT_DIRECTORY_OUTPUT,
+    )
+    if output_dir:
+        RECENT_DIRECTORY_OUTPUT = output_dir
+    return output_dir
 
 
 def select_output_path(start: Callable[[], None]) -> None:
@@ -1216,6 +1369,23 @@ def update_webcam_source(
         else:
             update_pop_live_status("Face could not be detected in last upload!")
         return map
+
+
+def get_valid_files_from_folder(folder_path: str) -> list:
+    """Get all valid image and video files from a folder."""
+    valid_files = []
+    if not os.path.isdir(folder_path):
+        return valid_files
+    
+    for root, dirs, files in os.walk(folder_path):
+        for file in files:
+            file_path = os.path.join(root, file)
+            if is_image(file_path) or is_video(file_path):
+                valid_files.append(file_path)
+    
+    # Sort files for consistent processing order
+    valid_files.sort()
+    return valid_files
 
 
 def update_webcam_target(

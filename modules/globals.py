@@ -20,6 +20,11 @@ source_path: str | None = None
 target_path: str | None = None
 output_path: str | None = None
 
+# Folder Processing
+process_folder: bool = False  # Enable folder processing mode
+folder_path: str | None = None  # Selected folder path
+file_queue: List[str] = []  # Queue of files to process
+
 # Processing Options
 frame_processors: List[str] = []
 keep_fps: bool = True
@@ -67,5 +72,10 @@ mask_size: float = 1.0             # Expansion factor for upper lip mask (relati
 enable_interpolation: bool = True # Toggle temporal smoothing
 interpolation_weight: float = 0  # Blend weight for current frame (0.0-1.0). Lower=smoother.
 # --- END: Added for Frame Interpolation ---
+
+# --- START: VPS Remote Processing ---
+vps_enabled: bool = False  # Habilitar processamento remoto na VPS
+vps_server_url: str | None = None  # URL do servidor VPS (ex: '192.168.1.100:8765')
+# --- END: VPS Remote Processing ---
 
 # --- END OF FILE globals.py ---

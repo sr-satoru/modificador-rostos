@@ -175,67 +175,156 @@ def update_status(message: str, scope: str = 'DLC.CORE') -> None:
     if not modules.globals.headless:
         ui.update_status(message)
 
+
+def generate_unique_output_path(target_path: str, output_dir: str, file_id: int) -> str:
+    """Generate a unique output path with ID to avoid overwriting."""
+    target_name, target_extension = os.path.splitext(os.path.basename(target_path))
+    
+    # Create unique filename with ID using uptopt-idaqui parameter
+    unique_name = f"uptopt-{file_id:04d}{target_extension}"
+    return os.path.join(output_dir, unique_name)
+
+
+def process_single_file(target_path: str, output_path: str) -> bool:
+    """Process a single file (image or video). Returns True if successful."""
+    # Verificar se processamento VPS está habilitado
+    if modules.globals.vps_enabled and modules.globals.vps_server_url:
+        try:
+            from modules.vps.client_ws import process_remote_file
+            update_status('Processando remotamente na VPS...')
+            return process_remote_file(
+                modules.globals.source_path,
+                target_path,
+                output_path,
+                modules.globals.vps_server_url
+            )
+        except Exception as e:
+            update_status(f'Erro no processamento VPS: {str(e)}')
+            update_status('Tentando processamento local...')
+            # Continuar com processamento local em caso de erro
+    
+    try:
+        # process image to image
+        if has_image_extension(target_path):
+            if modules.globals.nsfw_filter and ui.check_and_ignore_nsfw(target_path, None):
+                return False
+            try:
+                shutil.copy2(target_path, output_path)
+            except Exception as e:
+                print("Error copying file:", str(e))
+                return False
+            for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
+                update_status('Progressing...', frame_processor.NAME)
+                frame_processor.process_image(modules.globals.source_path, output_path, output_path)
+                release_resources()
+            if is_image(target_path):
+                update_status('Processing to image succeed!')
+            else:
+                update_status('Processing to image failed!')
+            return True
+        
+        # process image to videos
+        if modules.globals.nsfw_filter and ui.check_and_ignore_nsfw(target_path, None):
+            return False
+
+        if not modules.globals.map_faces:
+            update_status('Creating temp resources...')
+            create_temp(target_path)
+            update_status('Extracting frames...')
+            extract_frames(target_path)
+
+        temp_frame_paths = get_temp_frame_paths(target_path)
+        for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
+            update_status('Progressing...', frame_processor.NAME)
+            frame_processor.process_video(modules.globals.source_path, temp_frame_paths)
+            release_resources()
+        # handles fps
+        if modules.globals.keep_fps:
+            update_status('Detecting fps...')
+            fps = detect_fps(target_path)
+            update_status(f'Creating video with {fps} fps...')
+            create_video(target_path, fps)
+        else:
+            update_status('Creating video with 30.0 fps...')
+            create_video(target_path)
+        # handle audio
+        if modules.globals.keep_audio:
+            if modules.globals.keep_fps:
+                update_status('Restoring audio...')
+            else:
+                update_status('Restoring audio might cause issues as fps are not kept...')
+            restore_audio(target_path, output_path)
+        else:
+            move_temp(target_path, output_path)
+        # clean and validate
+        clean_temp(target_path)
+        if is_video(target_path):
+            update_status('Processing to video succeed!')
+        else:
+            update_status('Processing to video failed!')
+        return True
+    except Exception as e:
+        update_status(f'Error processing file: {str(e)}')
+        return False
+
+
 def start() -> None:
     for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
         if not frame_processor.pre_start():
             return
-    update_status('Processing...')
-    # process image to image
-    if has_image_extension(modules.globals.target_path):
-        if modules.globals.nsfw_filter and ui.check_and_ignore_nsfw(modules.globals.target_path, destroy):
+    
+    # Check if processing folder mode
+    if modules.globals.process_folder and modules.globals.file_queue:
+        # Process all files in queue
+        if not modules.globals.source_path:
+            update_status('Please select a source image first')
             return
-        try:
-            shutil.copy2(modules.globals.target_path, modules.globals.output_path)
-        except Exception as e:
-            print("Error copying file:", str(e))
-        for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
-            update_status('Progressing...', frame_processor.NAME)
-            frame_processor.process_image(modules.globals.source_path, modules.globals.output_path, modules.globals.output_path)
-            release_resources()
-        if is_image(modules.globals.target_path):
-            update_status('Processing to image succeed!')
+        
+        # Select output directory
+        if not modules.globals.headless:
+            output_dir = ui.select_output_directory()
+            if not output_dir:
+                update_status('Output directory not selected')
+                return
         else:
-            update_status('Processing to image failed!')
+            # In headless mode, use folder_path as output directory
+            output_dir = modules.globals.folder_path
+            if not output_dir:
+                update_status('Output directory not specified')
+                return
+        
+        total_files = len(modules.globals.file_queue)
+        update_status(f'Processing {total_files} files in queue...')
+        
+        successful = 0
+        failed = 0
+        
+        for file_id, target_path in enumerate(modules.globals.file_queue, 1):
+            update_status(f'Processing file {file_id}/{total_files}: {os.path.basename(target_path)}')
+            
+            # Generate unique output path
+            output_path = generate_unique_output_path(target_path, output_dir, file_id)
+            
+            # Process the file
+            if process_single_file(target_path, output_path):
+                successful += 1
+            else:
+                failed += 1
+        
+        update_status(f'Queue processing complete! Success: {successful}, Failed: {failed}')
+        modules.globals.file_queue = []  # Clear queue after processing
         return
-    # process image to videos
-    if modules.globals.nsfw_filter and ui.check_and_ignore_nsfw(modules.globals.target_path, destroy):
+    
+    # Normal single file processing
+    if not modules.globals.target_path:
+        update_status('Please select a target file')
         return
-
-    if not modules.globals.map_faces:
-        update_status('Creating temp resources...')
-        create_temp(modules.globals.target_path)
-        update_status('Extracting frames...')
-        extract_frames(modules.globals.target_path)
-
-    temp_frame_paths = get_temp_frame_paths(modules.globals.target_path)
-    for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
-        update_status('Progressing...', frame_processor.NAME)
-        frame_processor.process_video(modules.globals.source_path, temp_frame_paths)
-        release_resources()
-    # handles fps
-    if modules.globals.keep_fps:
-        update_status('Detecting fps...')
-        fps = detect_fps(modules.globals.target_path)
-        update_status(f'Creating video with {fps} fps...')
-        create_video(modules.globals.target_path, fps)
+    
+    update_status('Processing...')
+    if process_single_file(modules.globals.target_path, modules.globals.output_path):
+        update_status('Processing complete!')
     else:
-        update_status('Creating video with 30.0 fps...')
-        create_video(modules.globals.target_path)
-    # handle audio
-    if modules.globals.keep_audio:
-        if modules.globals.keep_fps:
-            update_status('Restoring audio...')
-        else:
-            update_status('Restoring audio might cause issues as fps are not kept...')
-        restore_audio(modules.globals.target_path, modules.globals.output_path)
-    else:
-        move_temp(modules.globals.target_path, modules.globals.output_path)
-    # clean and validate
-    clean_temp(modules.globals.target_path)
-    if is_video(modules.globals.target_path):
-        update_status('Processing to video succeed!')
-    else:
-        update_status('Processing to video failed!')
+        update_status('Processing failed!')
 
 
 def destroy(to_quit=True) -> None:
