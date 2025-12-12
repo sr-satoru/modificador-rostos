@@ -506,8 +506,13 @@ def process_frames(
     Iterates through frames, applies the appropriate swapping logic based on globals,
     and saves the result back to the frame path. Handles multi-threading via caller.
     """
-    # Determine which processing function to use based on map_faces global setting
-    use_v2 = getattr(modules.globals, "map_faces", False)
+    # In folder processing mode, always use simple mode (no map_faces)
+    # because we don't have pre-configured maps for each file
+    if modules.globals.process_folder and modules.globals.file_queue:
+        use_v2 = False
+    else:
+        # Determine which processing function to use based on map_faces global setting
+        use_v2 = getattr(modules.globals, "map_faces", False)
     source_face = None # Initialize source_face
 
     # --- Pre-load source face only if needed (Simple Mode: map_faces=False) ---
@@ -676,8 +681,14 @@ def process_video(source_path: str, temp_frame_paths: List[str]) -> None:
     PREVIOUS_FRAME_RESULT = None
     # ---
 
-    mode_desc = "'map_faces'" if getattr(modules.globals, "map_faces", False) else "'simple'"
-    if getattr(modules.globals, "map_faces", False) and getattr(modules.globals, "many_faces", False):
+    # In folder processing mode, always use simple mode
+    if modules.globals.process_folder and modules.globals.file_queue:
+        use_map_faces = False
+    else:
+        use_map_faces = getattr(modules.globals, "map_faces", False)
+    
+    mode_desc = "'map_faces'" if use_map_faces else "'simple'"
+    if use_map_faces and getattr(modules.globals, "many_faces", False):
         mode_desc += " and 'many_faces'. Using pre-analysis map."
     update_status(f"Processing video with {mode_desc} mode.", NAME)
 

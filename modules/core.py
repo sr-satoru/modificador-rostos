@@ -234,7 +234,11 @@ def process_single_file(target_path: str, output_path: str) -> bool:
         if modules.globals.nsfw_filter and ui.check_and_ignore_nsfw(target_path, None):
             return False
 
-        if not modules.globals.map_faces:
+        # In folder mode, always extract frames (use simple mode)
+        # Otherwise, extract frames only if not using map_faces
+        should_extract = modules.globals.process_folder or not modules.globals.map_faces
+        
+        if should_extract:
             update_status('Creating temp resources...')
             create_temp(target_path)
             update_status('Extracting frames...')
