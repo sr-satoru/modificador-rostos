@@ -42,6 +42,16 @@ def pre_check() -> bool:
 
 
 def pre_start() -> bool:
+    # In folder processing mode, target_path may not be set, but file_queue will be
+    if modules.globals.process_folder and modules.globals.file_queue:
+        # Folder mode: check if we have files to process
+        if len(modules.globals.file_queue) > 0:
+            return True
+        else:
+            update_status("No files in queue for folder processing.", NAME)
+            return False
+    
+    # Single file mode: check if target_path is valid
     if not is_image(modules.globals.target_path) and not is_video(
         modules.globals.target_path
     ):

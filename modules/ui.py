@@ -68,6 +68,12 @@ RECENT_DIRECTORY_OUTPUT = None
 _ = None
 preview_label = None
 preview_slider = None
+preview_nav_frame = None
+preview_prev_button = None
+preview_next_button = None
+preview_file_label = None
+preview_current_index = 0
+preview_is_closing = False  # Flag to prevent reopening loop
 source_label = None
 target_label = None
 status_label = None
@@ -711,17 +717,56 @@ def update_popup_source(
 
 
 def create_preview(parent: ctk.CTkToplevel) -> ctk.CTkToplevel:
-    global preview_label, preview_slider
+    global preview_label, preview_slider, preview_nav_frame, preview_prev_button
+    global preview_next_button, preview_file_label
 
     preview = ctk.CTkToplevel(parent)
     preview.withdraw()
     preview.title(_("Preview"))
     preview.configure()
-    preview.protocol("WM_DELETE_WINDOW", lambda: toggle_preview())
+    
+    def close_preview():
+        """Handle preview window close event."""
+        global preview_is_closing
+        preview_is_closing = True
+        preview.withdraw()
+        # Reset flag after delay to allow normal reopening
+        def reset_flag():
+            global preview_is_closing
+            preview_is_closing = False
+        preview.after(100, reset_flag)
+    
+    preview.protocol("WM_DELETE_WINDOW", close_preview)
     preview.resizable(width=True, height=True)
 
     preview_label = ctk.CTkLabel(preview, text=None)
     preview_label.pack(fill="both", expand=True)
+
+    # Navigation frame for folder preview
+    preview_nav_frame = ctk.CTkFrame(preview)
+    
+    preview_prev_button = ctk.CTkButton(
+        preview_nav_frame,
+        text="◀ Previous",
+        command=lambda: navigate_preview_folder(-1),
+        width=120
+    )
+    preview_prev_button.pack(side="left", padx=5, pady=5)
+    
+    preview_file_label = ctk.CTkLabel(
+        preview_nav_frame,
+        text="",
+        width=300
+    )
+    preview_file_label.pack(side="left", padx=10, pady=5)
+    
+    preview_next_button = ctk.CTkButton(
+        preview_nav_frame,
+        text="Next ▶",
+        command=lambda: navigate_preview_folder(1),
+        width=120
+    )
+    preview_next_button.pack(side="left", padx=5, pady=5)
 
     preview_slider = ctk.CTkSlider(
         preview, from_=0, to=0, command=lambda frame_value: update_preview(frame_value)
@@ -955,14 +1000,39 @@ def render_video_preview(
 
 
 def toggle_preview() -> None:
+    global preview_is_closing
+    
+    # Check if we're in the process of closing to prevent loop
+    if preview_is_closing:
+        return
+    
     if PREVIEW.state() == "normal":
+        # Set flag to prevent reopening
+        preview_is_closing = True
         PREVIEW.withdraw()
-    elif modules.globals.source_path and modules.globals.target_path:
-        init_preview()
-        update_preview()
+        # Reset flag after a short delay to allow normal reopening later
+        def reset_flag():
+            global preview_is_closing
+            preview_is_closing = False
+        PREVIEW.after(100, reset_flag)
+    elif modules.globals.source_path:
+        # Reset flag when opening
+        preview_is_closing = False
+        if modules.globals.process_folder and modules.globals.file_queue:
+            # Folder preview mode
+            init_preview_folder()
+            update_preview_folder(0)
+        elif modules.globals.target_path:
+            # Single file preview mode
+            init_preview()
+            update_preview()
 
 
 def init_preview() -> None:
+    # Hide folder navigation controls
+    if preview_nav_frame:
+        preview_nav_frame.pack_forget()
+    
     if is_image(modules.globals.target_path):
         preview_slider.pack_forget()
     if is_video(modules.globals.target_path):
@@ -970,6 +1040,186 @@ def init_preview() -> None:
         preview_slider.configure(to=video_frame_total)
         preview_slider.pack(fill="x")
         preview_slider.set(0)
+
+
+def init_preview_folder() -> None:
+    """Initialize preview for folder mode with navigation controls."""
+    global preview_current_index
+    
+    preview_current_index = 0
+    
+    # Show navigation controls
+    if preview_nav_frame:
+        preview_nav_frame.pack(fill="x", padx=5, pady=5, before=preview_label)
+    
+    # Hide video slider initially (will be shown if current file is video)
+    preview_slider.pack_forget()
+    
+    # Update navigation buttons state
+    update_navigation_buttons()
+
+
+def navigate_preview_folder(direction: int) -> None:
+    """Navigate to previous or next media in folder."""
+    global preview_current_index
+    
+    if not modules.globals.file_queue:
+        return
+    
+    preview_current_index += direction
+    
+    # Clamp index to valid range
+    if preview_current_index < 0:
+        preview_current_index = 0
+    elif preview_current_index >= len(modules.globals.file_queue):
+        preview_current_index = len(modules.globals.file_queue) - 1
+    
+    update_preview_folder(preview_current_index)
+
+
+def update_navigation_buttons() -> None:
+    """Update navigation buttons state based on current index."""
+    if not preview_prev_button or not preview_next_button:
+        return
+    
+    total_files = len(modules.globals.file_queue) if modules.globals.file_queue else 0
+    
+    # Enable/disable buttons based on position
+    preview_prev_button.configure(state="normal" if preview_current_index > 0 else "disabled")
+    preview_next_button.configure(state="normal" if preview_current_index < total_files - 1 else "disabled")
+
+
+def update_preview_folder(file_index: int = 0) -> None:
+    """Update preview for a specific file in the folder queue."""
+    global preview_current_index
+    
+    if not modules.globals.source_path or not modules.globals.file_queue:
+        return
+    
+    if file_index < 0 or file_index >= len(modules.globals.file_queue):
+        return
+    
+    preview_current_index = file_index
+    current_file = modules.globals.file_queue[file_index]
+    
+    # Update file label
+    if preview_file_label:
+        file_name = os.path.basename(current_file)
+        total_files = len(modules.globals.file_queue)
+        preview_file_label.configure(text=f"{file_name} ({file_index + 1}/{total_files})")
+    
+    # Update navigation buttons
+    update_navigation_buttons()
+    
+    update_status("Processing preview...")
+    
+    try:
+        # Process the current file for preview
+        if is_image(current_file):
+            # For images, process directly
+            temp_frame = cv2.imread(current_file)
+            if temp_frame is None:
+                update_status(f"Error reading image: {current_file}")
+                return
+            
+            if modules.globals.nsfw_filter and check_and_ignore_nsfw(temp_frame):
+                return
+            
+            # Process with frame processors
+            for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
+                source_face = get_one_face(cv2.imread(modules.globals.source_path))
+                temp_frame = frame_processor.process_frame(source_face, temp_frame)
+            
+            image = Image.fromarray(cv2.cvtColor(temp_frame, cv2.COLOR_BGR2RGB))
+            image = ImageOps.contain(
+                image, (PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT), Image.LANCZOS
+            )
+            image = ctk.CTkImage(image, size=image.size)
+            preview_label.configure(image=image)
+            
+            # Hide slider for images
+            preview_slider.pack_forget()
+            
+        elif is_video(current_file):
+            # For videos, show first frame
+            temp_frame = get_video_frame(current_file, 0)
+            if temp_frame is None:
+                update_status(f"Error reading video: {current_file}")
+                return
+            
+            if modules.globals.nsfw_filter and check_and_ignore_nsfw(temp_frame):
+                return
+            
+            # Process with frame processors
+            for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
+                source_face = get_one_face(cv2.imread(modules.globals.source_path))
+                temp_frame = frame_processor.process_frame(source_face, temp_frame)
+            
+            image = Image.fromarray(cv2.cvtColor(temp_frame, cv2.COLOR_BGR2RGB))
+            image = ImageOps.contain(
+                image, (PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT), Image.LANCZOS
+            )
+            image = ctk.CTkImage(image, size=image.size)
+            preview_label.configure(image=image)
+            
+            # Show slider for video
+            video_frame_total = get_video_frame_total(current_file)
+            if video_frame_total > 0:
+                preview_slider.configure(to=video_frame_total)
+                preview_slider.pack(fill="x", padx=5, pady=5, after=preview_nav_frame)
+                preview_slider.set(0)
+                # Update slider command to work with folder mode
+                preview_slider.configure(command=lambda frame_value: update_preview_folder_video(frame_value))
+            else:
+                preview_slider.pack_forget()
+        else:
+            # Hide slider for non-video files
+            preview_slider.pack_forget()
+        
+        update_status("Preview ready!")
+        # Only show preview if not closing
+        if not preview_is_closing:
+            PREVIEW.deiconify()
+        
+    except Exception as e:
+        update_status(f"Error processing preview: {str(e)}")
+
+
+def update_preview_folder_video(frame_number: int = 0) -> None:
+    """Update preview for video frame in folder mode."""
+    if not modules.globals.source_path or not modules.globals.file_queue:
+        return
+    
+    if preview_current_index < 0 or preview_current_index >= len(modules.globals.file_queue):
+        return
+    
+    current_file = modules.globals.file_queue[preview_current_index]
+    
+    if not is_video(current_file):
+        return
+    
+    try:
+        temp_frame = get_video_frame(current_file, int(frame_number))
+        if temp_frame is None:
+            return
+        
+        if modules.globals.nsfw_filter and check_and_ignore_nsfw(temp_frame):
+            return
+        
+        # Process with frame processors
+        for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
+            source_face = get_one_face(cv2.imread(modules.globals.source_path))
+            temp_frame = frame_processor.process_frame(source_face, temp_frame)
+        
+        image = Image.fromarray(cv2.cvtColor(temp_frame, cv2.COLOR_BGR2RGB))
+        image = ImageOps.contain(
+            image, (PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT), Image.LANCZOS
+        )
+        image = ctk.CTkImage(image, size=image.size)
+        preview_label.configure(image=image)
+        
+    except Exception as e:
+        update_status(f"Error updating video preview: {str(e)}")
 
 
 def update_preview(frame_number: int = 0) -> None:
@@ -991,7 +1241,9 @@ def update_preview(frame_number: int = 0) -> None:
         image = ctk.CTkImage(image, size=image.size)
         preview_label.configure(image=image)
         update_status("Processing succeed!")
-        PREVIEW.deiconify()
+        # Only show preview if not closing
+        if not preview_is_closing:
+            PREVIEW.deiconify()
 
 
 def webcam_preview(root: ctk.CTk, camera_index: int):
@@ -1094,7 +1346,9 @@ def create_webcam_preview(camera_index: int):
         return
 
     preview_label.configure(width=PREVIEW_DEFAULT_WIDTH, height=PREVIEW_DEFAULT_HEIGHT)
-    PREVIEW.deiconify()
+    # Only show preview if not closing (webcam preview)
+    if not preview_is_closing:
+        PREVIEW.deiconify()
 
     frame_processors = get_frame_processors_modules(modules.globals.frame_processors)
     source_image = None

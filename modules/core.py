@@ -213,9 +213,16 @@ def process_single_file(target_path: str, output_path: str) -> bool:
             except Exception as e:
                 print("Error copying file:", str(e))
                 return False
+            # Process each frame processor in sequence
+            # Each processor reads from output_path (result of previous processor) and writes back to output_path
+            # This ensures: face_swapper processes original -> face_enhancer processes swapped result
+            current_input = output_path  # Start with copied original image
             for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
                 update_status('Progressing...', frame_processor.NAME)
-                frame_processor.process_image(modules.globals.source_path, output_path, output_path)
+                # Each processor reads from current_input and writes to output_path
+                frame_processor.process_image(modules.globals.source_path, current_input, output_path)
+                # Next processor will read from the updated output_path
+                current_input = output_path
                 release_resources()
             if is_image(target_path):
                 update_status('Processing to image succeed!')

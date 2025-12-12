@@ -610,7 +610,12 @@ def process_image(source_path: str, target_path: str, output_path: str) -> None:
     PREVIOUS_FRAME_RESULT = None
     # ---
 
-    use_v2 = getattr(modules.globals, "map_faces", False)
+    # In folder processing mode, always use simple mode (no map_faces)
+    # because we don't have pre-configured maps for each file
+    if modules.globals.process_folder and modules.globals.file_queue:
+        use_v2 = False
+    else:
+        use_v2 = getattr(modules.globals, "map_faces", False)
 
     # Read target first
     try:
