@@ -10,6 +10,16 @@ tf_env/
 *.png
 *.mp4
 *.mkv
+*.jpg
+*.jpeg
+*.png
+*.mp4
+*.mkv
+*.jpg
+*.jpeg
+*.png
+*.mp4
+*.zip
 
 .tmp/
 temp/
