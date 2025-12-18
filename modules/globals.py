@@ -69,8 +69,9 @@ mask_down_size: float = 0.1        # Expansion factor for lower lip mask (relati
 mask_size: float = 1.0             # Expansion factor for upper lip mask (relative)
 
 # --- START: Added for Frame Interpolation ---
-enable_interpolation: bool = True # Toggle temporal smoothing
-interpolation_weight: float = 0  # Blend weight for current frame (0.0-1.0). Lower=smoother.
+# OTIMIZAÇÃO: Desabilitar por padrão - só útil para live mode
+enable_interpolation: bool = False  # Toggle temporal smoothing (desabilitado para vídeos)
+interpolation_weight: float = 0.0   # Blend weight for current frame (0.0-1.0)
 # --- END: Added for Frame Interpolation ---
 
 # --- START: VPS Remote Processing ---

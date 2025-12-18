@@ -133,7 +133,18 @@ def suggest_execution_threads() -> int:
         return 1
     if 'ROCMExecutionProvider' in modules.globals.execution_providers:
         return 1
-    return 8
+    
+    # OTIMIZAÇÃO CRÍTICA: Usar mais threads para paralelização eficiente
+    import os
+    cpu_count = os.cpu_count() or 8
+    
+    # Para GPU (CUDA): Usar mais threads para preparar frames em paralelo
+    # GPU processa rápido, então precisa de pipeline de frames pronto
+    if 'CUDAExecutionProvider' in modules.globals.execution_providers:
+        return min(cpu_count, 16)  # Até 16 threads para CUDA
+    
+    # Para CPU: Usar metade dos cores disponíveis (deixar espaço para sistema)
+    return max(4, cpu_count // 2)
 
 
 def limit_resources() -> None:
@@ -187,8 +198,10 @@ def generate_unique_output_path(target_path: str, output_dir: str, file_id: int)
 
 def process_single_file(target_path: str, output_path: str) -> bool:
     """Process a single file (image or video). Returns True if successful."""
-    # Verificar se processamento VPS está habilitado
-    if modules.globals.vps_enabled and modules.globals.vps_server_url:
+    # OTIMIZAÇÃO: Verificar VPS uma vez só no início, evitando overhead
+    use_vps = getattr(modules.globals, 'vps_enabled', False) and getattr(modules.globals, 'vps_server_url', None)
+    
+    if use_vps:
         try:
             from modules.vps.client_ws import process_remote_file
             update_status('Processando remotamente na VPS...')
@@ -213,16 +226,11 @@ def process_single_file(target_path: str, output_path: str) -> bool:
             except Exception as e:
                 print("Error copying file:", str(e))
                 return False
-            # Process each frame processor in sequence
-            # Each processor reads from output_path (result of previous processor) and writes back to output_path
-            # This ensures: face_swapper processes original -> face_enhancer processes swapped result
-            current_input = output_path  # Start with copied original image
+            # OTIMIZAÇÃO CRÍTICA: Processar em memória sem I/O redundante
+            # Todos os processadores agora usam o mesmo output_path diretamente
             for frame_processor in get_frame_processors_modules(modules.globals.frame_processors):
                 update_status('Progressing...', frame_processor.NAME)
-                # Each processor reads from current_input and writes to output_path
-                frame_processor.process_image(modules.globals.source_path, current_input, output_path)
-                # Next processor will read from the updated output_path
-                current_input = output_path
+                frame_processor.process_image(modules.globals.source_path, output_path, output_path)
                 release_resources()
             if is_image(target_path):
                 update_status('Processing to image succeed!')

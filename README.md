@@ -75,7 +75,7 @@ Antes de começar, certifique-se de ter instalado:
 
 1. **Navegue até a pasta do projeto:**
    ```cmd
-   cd Deep-live
+   cd modificador-rostos
    ```
 
 2. **Escolha e execute o instalador apropriado:**
@@ -107,7 +107,7 @@ Antes de começar, certifique-se de ter instalado:
 
 ```cmd
 # Navegue até a pasta do projeto
-cd Deep-live
+cd modificador-rostos
 
 # Crie o ambiente virtual
 python -m venv venv
@@ -152,7 +152,7 @@ pip install onnxruntime
 
 1. **Navegue até a pasta do projeto:**
    ```bash
-   cd Deep-live
+   cd modificador-rostos
    ```
 
 2. **Dê permissão de execução aos scripts:**
@@ -189,7 +189,7 @@ pip install onnxruntime
 
 ```bash
 # Navegue até a pasta do projeto
-cd Deep-live
+cd modificador-rostos
 
 # Crie o ambiente virtual
 python3 -m venv venv
@@ -312,7 +312,7 @@ O sistema detecta automaticamente o melhor provider disponível se você não es
 ## 📁 Estrutura de Pastas
 
 ```
-Deep-live/
+modificador-rostos/
 ├── instalador/          # Instaladores automáticos
 │   ├── windows/         # Instaladores para Windows (.bat)
 │   └── linux/           # Instaladores para Linux (.sh)

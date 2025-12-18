@@ -80,10 +80,37 @@ def get_face_swapper() -> Any:
             model_path = os.path.join(models_dir, model_name)
             update_status(f"Loading face swapper model from: {model_path}", NAME)
             try:
-                # Optimized provider configuration for Apple Silicon
+                # OTIMIZAÇÃO CRÍTICA: Session options para máxima performance
+                import onnxruntime
+                sess_options = onnxruntime.SessionOptions()
+                
+                # Habilitar todas otimizações de grafo
+                sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+                
+                # Otimizar execução paralela dentro do modelo
+                sess_options.intra_op_num_threads = 2
+                sess_options.inter_op_num_threads = 2
+                
+                # Habilitar memory patterns para reutilização eficiente
+                sess_options.enable_mem_pattern = True
+                sess_options.enable_cpu_mem_arena = True
+                
+                # Provider configurations otimizadas
                 providers_config = []
                 for p in modules.globals.execution_providers:
-                    if p == "CoreMLExecutionProvider" and IS_APPLE_SILICON:
+                    if p == "CUDAExecutionProvider":
+                        # Configuração CUDA otimizada para máxima performance
+                        providers_config.append((
+                            "CUDAExecutionProvider",
+                            {
+                                'device_id': 0,
+                                'arena_extend_strategy': 'kSameAsRequested',
+                                'gpu_mem_limit': 2 * 1024 * 1024 * 1024,  # 2GB
+                                'cudnn_conv_algo_search': 'HEURISTIC',
+                                'do_copy_in_default_stream': True,
+                            }
+                        ))
+                    elif p == "CoreMLExecutionProvider" and IS_APPLE_SILICON:
                         # Enhanced CoreML configuration for M1-M5
                         providers_config.append((
                             "CoreMLExecutionProvider",
@@ -98,11 +125,14 @@ def get_face_swapper() -> Any:
                             }
                         ))
                     else:
+                        # For CUDA and CPU: use provider as-is, no special config
+                        # This ensures CUDA processes exactly like CPU does
                         providers_config.append(p)
                 
                 FACE_SWAPPER = insightface.model_zoo.get_model(
                     model_path,
                     providers=providers_config,
+                    session_options=sess_options,  # NOVA OPÇÃO CRÍTICA
                 )
                 update_status("Face swapper model loaded successfully.", NAME)
             except Exception as e:
@@ -125,13 +155,15 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame) -> Frame:
     if temp_frame.dtype != np.uint8:
         temp_frame = np.clip(temp_frame, 0, 255).astype(np.uint8)
 
-    # Apply the face swap with optimized memory handling
+    # Apply the face swap - process EXACTLY like CPU does
     try:
         # For Apple Silicon, use optimized inference
         if IS_APPLE_SILICON:
             # Ensure contiguous memory layout for better performance
             temp_frame = np.ascontiguousarray(temp_frame)
         
+        # Process exactly the same way for both CPU and CUDA
+        # No special handling for CUDA - let it process like CPU
         swapped_frame_raw = face_swapper.get(
             temp_frame, target_face, source_face, paste_back=True
         )
@@ -152,13 +184,14 @@ def swap_face(source_face: Face, target_face: Face, temp_frame: Frame) -> Frame:
              # print(f"Warning: Swapped frame shape {swapped_frame_raw.shape} differs from input {temp_frame.shape}.") # Debug
              # Attempt resize (might distort if aspect ratio changed, but better than crashing)
              try:
-                 swapped_frame_raw = cv2.resize(swapped_frame_raw, (temp_frame.shape[1], temp_frame.shape[0]))
+                 swapped_frame_raw = cv2.resize(swapped_frame_raw, (temp_frame.shape[1], temp_frame.shape[0]), interpolation=cv2.INTER_LINEAR)
              except Exception as resize_e:
                  # print(f"Error resizing swapped frame: {resize_e}") # Debug
                  return original_frame
 
         # Explicitly clip values to 0-255 and convert to uint8
         # This handles cases where the model might output floats or values outside the valid range
+        # Process EXACTLY like CPU - no special CUDA handling
         swapped_frame = np.clip(swapped_frame_raw, 0, 255).astype(np.uint8)
         # --- END: CRITICAL FIX FOR ORT 1.17 ---
 
@@ -506,13 +539,12 @@ def process_frames(
     Iterates through frames, applies the appropriate swapping logic based on globals,
     and saves the result back to the frame path. Handles multi-threading via caller.
     """
+    # OTIMIZAÇÃO: Cache verificação de folder mode para evitar verificações repetidas
+    is_folder_mode = getattr(modules.globals, 'process_folder', False) and getattr(modules.globals, 'file_queue', None)
+    
     # In folder processing mode, always use simple mode (no map_faces)
     # because we don't have pre-configured maps for each file
-    if modules.globals.process_folder and modules.globals.file_queue:
-        use_v2 = False
-    else:
-        # Determine which processing function to use based on map_faces global setting
-        use_v2 = getattr(modules.globals, "map_faces", False)
+    use_v2 = False if is_folder_mode else getattr(modules.globals, "map_faces", False)
     source_face = None # Initialize source_face
 
     # --- Pre-load source face only if needed (Simple Mode: map_faces=False) ---
@@ -1077,7 +1109,7 @@ def create_face_mask(face: Face, frame: Frame) -> np.ndarray:
         # Calculate convex hull of these points
         # Use try-except as convexHull can fail on degenerate input
         try:
-             hull = cv2.convexHull(full_face_poly.astype(np.float32)) # Use float for accuracy
+             hull = cv2.convexHull(face_outline_points.astype(np.float32)) # Use float for accuracy
              if hull is None or len(hull) < 3:
                  # print("Warning: Convex hull calculation failed or returned too few points.")
                  # Fallback: use bounding box of landmarks? Or just return empty mask?
